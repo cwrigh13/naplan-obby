@@ -26,6 +26,7 @@ import {
   Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getImage, saveImage } from './utils/db';
 
 import { QUESTIONS, Question, Domain } from './data/questions';
 
@@ -88,15 +89,17 @@ const RobloxThumbnail = ({ title, fallback }: { title: string, fallback: string 
 
   useEffect(() => {
     const cacheKey = `thumb_v4_${title}`;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      setImageUrl(cached);
-      setLoading(false);
-      return;
-    }
-
-    const generate = async () => {
+    
+    const loadAndGenerate = async () => {
       try {
+        // Try to load from IndexedDB first
+        const cached = await getImage(cacheKey);
+        if (cached) {
+          setImageUrl(cached);
+          setLoading(false);
+          return;
+        }
+
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
           console.warn("Gemini API key missing, using fallback for", title);
@@ -124,15 +127,15 @@ const RobloxThumbnail = ({ title, fallback }: { title: string, fallback: string 
             if (part.inlineData) {
               const url = `data:image/png;base64,${part.inlineData.data}`;
               setImageUrl(url);
-              localStorage.setItem(cacheKey, url);
+              await saveImage(cacheKey, url);
               break;
             }
           }
         }
         
-        if (!imageUrl) {
-          setImageUrl(fallback);
-        }
+        // If we still don't have an image URL (e.g. no inlineData found), use fallback
+        setImageUrl(prev => prev || fallback);
+        
       } catch (error) {
         console.error("Image generation failed for", title, error);
         setImageUrl(fallback);
@@ -141,7 +144,7 @@ const RobloxThumbnail = ({ title, fallback }: { title: string, fallback: string 
       }
     };
 
-    generate();
+    loadAndGenerate();
   }, [title, fallback]);
 
   if (loading) {
